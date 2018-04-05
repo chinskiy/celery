@@ -1,28 +1,20 @@
 from __future__ import absolute_import, unicode_literals
 
-import pytest
 import traceback
-
 from contextlib import contextmanager
 
+import pytest
 from case import Mock, call, patch, skip
 
-from celery import uuid
-from celery import states
+from celery import states, uuid
+from celery.app.task import Context
 from celery.backends.base import SyncBackendMixin
-from celery.exceptions import (
-    CPendingDeprecationWarning, ImproperlyConfigured,
-    IncompleteStream, TimeoutError,
-)
+from celery.exceptions import (CPendingDeprecationWarning,
+                               ImproperlyConfigured, IncompleteStream,
+                               TimeoutError)
 from celery.five import range
-from celery.result import (
-    AsyncResult,
-    EagerResult,
-    ResultSet,
-    GroupResult,
-    result_from_tuple,
-    assert_will_not_block,
-)
+from celery.result import (AsyncResult, EagerResult, GroupResult, ResultSet,
+                           assert_will_not_block, result_from_tuple)
 from celery.utils.serialization import pickle
 
 PYTRACEBACK = """\
@@ -36,10 +28,10 @@ Doesn't matter: really!\
 
 
 def mock_task(name, state, result, traceback=None):
-    return dict(
-        id=uuid(), name=name, state=state,
-        result=result, traceback=traceback,
-    )
+    return {
+        'id': uuid(), 'name': name, 'state': state,
+        'result': result, 'traceback': traceback,
+    }
 
 
 def save_result(app, task):
@@ -375,6 +367,28 @@ class test_AsyncResult:
 
         assert not self.app.AsyncResult(uuid()).ready()
 
+    def test_get_request_meta(self):
+
+        x = self.app.AsyncResult('1')
+        request = Context(
+            task='foo',
+            children=None,
+            args=['one', 'two'],
+            kwargs={'kwarg1': 'three'},
+            hostname="foo",
+            retries=1,
+            delivery_info={'routing_key': 'celery'}
+        )
+        x.backend.store_result(task_id="1", result='foo', state=states.SUCCESS,
+                               traceback=None, request=request)
+        assert x.name == 'foo'
+        assert x.args == ['one', 'two']
+        assert x.kwargs == {'kwarg1': 'three'}
+        assert x.worker == 'foo'
+        assert x.retries == 1
+        assert x.queue == 'celery'
+        assert x.date_done is not None
+
 
 class test_ResultSet:
 
@@ -527,12 +541,16 @@ class MockAsyncResultFailure(AsyncResult):
 class MockAsyncResultSuccess(AsyncResult):
     forgotten = False
 
+    def __init__(self, *args, **kwargs):
+        self._result = kwargs.pop('result', 42)
+        super(MockAsyncResultSuccess, self).__init__(*args, **kwargs)
+
     def forget(self):
         self.forgotten = True
 
     @property
     def result(self):
-        return 42
+        return self._result
 
     @property
     def state(self):
@@ -543,17 +561,17 @@ class MockAsyncResultSuccess(AsyncResult):
 
 
 class SimpleBackend(SyncBackendMixin):
-        ids = []
+    ids = []
 
-        def __init__(self, ids=[]):
-            self.ids = ids
+    def __init__(self, ids=[]):
+        self.ids = ids
 
-        def _ensure_not_eager(self):
-            pass
+    def _ensure_not_eager(self):
+        pass
 
-        def get_many(self, *args, **kwargs):
-            return ((id, {'result': i, 'status': states.SUCCESS})
-                    for i, id in enumerate(self.ids))
+    def get_many(self, *args, **kwargs):
+        return ((id, {'result': i, 'status': states.SUCCESS})
+                for i, id in enumerate(self.ids))
 
 
 class test_GroupResult:
@@ -892,3 +910,4 @@ class test_tuples:
         )
         assert x, result_from_tuple(x.as_tuple() == self.app)
         assert x, result_from_tuple(x == self.app)
+
