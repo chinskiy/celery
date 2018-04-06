@@ -676,8 +676,8 @@ class BaseKeyValueStoreBackend(Backend):
                 # Some unit tests mock the properties, casting to string to
                 # avoid serialization errors
                 'name': str(getattr(request, 'task', None)),
-                'args': getattr(request, 'args', None),
-                'kwargs': getattr(request, 'kwargs', None),
+                'args': str(getattr(request, 'args', None)),
+                'kwargs': str(getattr(request, 'kwargs', None)),
                 'worker': str(getattr(request, 'hostname', None)),
                 'retries': getattr(request, 'retries', None),
                 'queue': str(request.delivery_info.get('routing_key'))
