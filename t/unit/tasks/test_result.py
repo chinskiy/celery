@@ -8,6 +8,7 @@ import pytest
 from case import Mock, call, patch, skip
 
 from celery import states, uuid
+from celery.app.task import Context
 from celery.backends.base import SyncBackendMixin
 from celery.exceptions import (CPendingDeprecationWarning,
                                ImproperlyConfigured, IncompleteStream,
@@ -391,6 +392,28 @@ class test_AsyncResult:
         result = self.app.AsyncResult(self.task1['id'])
         result.backend = None
         del result
+
+    def test_get_request_meta(self):
+
+        x = self.app.AsyncResult('1')
+        request = Context(
+            task='foo',
+            children=None,
+            args=['one', 'two'],
+            kwargs={'kwarg1': 'three'},
+            hostname="foo",
+            retries=1,
+            delivery_info={'routing_key': 'celery'}
+        )
+        x.backend.store_result(task_id="1", result='foo', state=states.SUCCESS,
+                               traceback=None, request=request)
+        assert x.name == 'foo'
+        assert x.args == ['one', 'two']
+        assert x.kwargs == {'kwarg1': 'three'}
+        assert x.worker == 'foo'
+        assert x.retries == 1
+        assert x.queue == 'celery'
+        assert x.date_done is not None
 
 
 class test_ResultSet:
